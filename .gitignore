@@ -1,0 +1,12 @@
+# 虛擬環境與快取(下載者由 run.bat 自動重建)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# 本地工具設定
+.claude/
+
+# OS
+Thumbs.db
+.DS_Store
