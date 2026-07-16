@@ -270,6 +270,48 @@ def main() -> None:
     out_rows.append(perf(eq_spy, "SPY買進持有"))
     print("  （E 列欄位對應：win%=總報酬%、mean%=年化%、med%=最大回落%）")
 
+    # ---------------- F. Wyckoff 逐段法用在板塊層：標籤 → 下一段相對 SPY ----------------
+    # 關鍵發現：板塊層單段標籤主要反映 beta，相鄰段方向交替 → 機械性反轉。
+    # 綠格下一段勝率僅 ~29%、紅格 ~67%；連 2 段同色（跨方向、beta 抵消）回到 50%。
+    print("\n=== F. Wyckoff 逐段標籤（板塊 vs SPY，5%/8日）→ 下一段相對報酬 ===")
+    res = analysis.analyze(px, stock_cols=scols, sector_col=bcol, pct=0.05, min_bars=8)
+    legs = res["legs"]
+    rel, lab = res["score_vs_sector"], res["qual_vs_sector"]
+    cols_f = list(rel.columns)
+    by_label: dict[str, list[float]] = {}
+    by_color: dict[str, list[float]] = {"綠(相對強)": [], "紅(相對弱)": []}
+    streak2: dict[str, list[float]] = {"連2綠(跨方向)": [], "連2紅(跨方向)": []}
+    for t in scols:
+        for i in range(len(legs) - 1):
+            if legs[i].ongoing or legs[i + 1].ongoing:
+                continue
+            lb_ = lab.loc[t, cols_f[i]]
+            fwd = rel.loc[t, cols_f[i + 1]]
+            if lb_ == "資料不足" or pd.isna(fwd):
+                continue
+            by_label.setdefault(lb_, []).append(float(fwd))
+            green = lb_ in analysis.GREEN_LABELS
+            by_color["綠(相對強)" if green else "紅(相對弱)"].append(float(fwd))
+            if i >= 1 and lab.loc[t, cols_f[i - 1]] != "資料不足":
+                pg_ = lab.loc[t, cols_f[i - 1]] in analysis.GREEN_LABELS
+                if pg_ and green:
+                    streak2["連2綠(跨方向)"].append(float(fwd))
+                elif not pg_ and not green:
+                    streak2["連2紅(跨方向)"].append(float(fwd))
+    for name, vals in {**by_label, **by_color, **streak2}.items():
+        r = agg(vals)
+        out_rows.append({"分析": "F_板塊逐段標籤", "項目": name, "前瞻週": 0, **r})
+        print(f"  {name}: n={r['n']:4d}  下段勝率 {r['win%']:5.1f}%  平均 {r['mean%']:+.2f}%  中位 {r['med%']:+.2f}%")
+    rs_vs_spy = analysis.rs_series(px[scols], px[bcol])
+    fstats = analysis.pattern_forward_stats(lab, legs, rs_vs_spy, scols, rel)
+    if not fstats.empty:
+        print("  -- 型態訊號在板塊層的應驗率（多數多頭型態在此層反指，禁照個股讀法使用）--")
+        print(fstats.to_string(index=False))
+        for _, r_ in fstats.iterrows():
+            out_rows.append({"分析": "F_板塊層型態", "項目": r_["型態"], "前瞻週": 0,
+                             "n": int(r_["樣本數"]), "win%": r_["應驗率%"],
+                             "mean%": r_["平均%"], "med%": r_["下一段相對報酬中位%"]})
+
     pd.DataFrame(out_rows).to_csv("strategy_study_results.csv", index=False, encoding="utf-8-sig")
     print("\n已輸出 strategy_study_results.csv")
 
