@@ -48,6 +48,14 @@ def _on_market_change():
     st.session_state["preset_pick"] = "（自訂 / 清空）"
 
 
+def _shift_asof(days: int):
+    """復盤步進器：把基準日往前/後移，並夾在允許範圍內。"""
+    cur = st.session_state.get("as_of", dt.date.today() - dt.timedelta(days=90))
+    lo = dt.date.today() - dt.timedelta(days=365 * 8)
+    hi = dt.date.today()
+    st.session_state["as_of"] = min(max(cur + dt.timedelta(days=days), lo), hi)
+
+
 for key in ("core_raw", "ref_raw"):
     if key not in st.session_state:
         st.session_state[key] = ""
@@ -94,12 +102,23 @@ with st.sidebar:
     replay = st.checkbox("🕰️ 復盤模式（以指定日期當作『當下』）", value=False)
     as_of = None
     if replay:
+        if "as_of" not in st.session_state:
+            st.session_state["as_of"] = dt.date.today() - dt.timedelta(days=90)
         as_of = st.date_input(
             "復盤基準日",
-            value=dt.date.today() - dt.timedelta(days=90),
             min_value=dt.date.today() - dt.timedelta(days=365 * 8),
             max_value=dt.date.today(),
+            key="as_of",
         )
+        s1, s2, s3, s4 = st.columns(4)
+        s1.button("◀ 月", on_click=_shift_asof, args=(-30,), width="stretch",
+                  help="基準日往前 30 天")
+        s2.button("◀ 週", on_click=_shift_asof, args=(-7,), width="stretch",
+                  help="基準日往前 7 天")
+        s3.button("週 ▶", on_click=_shift_asof, args=(7,), width="stretch",
+                  help="基準日往後 7 天")
+        s4.button("月 ▶", on_click=_shift_asof, args=(30,), width="stretch",
+                  help="基準日往後 30 天")
 
     st.divider()
     st.subheader("結構參數")
@@ -137,8 +156,12 @@ if len(core_list) > 1:
 end = pd.Timestamp(as_of) if (replay and as_of) else pd.Timestamp.today().normalize()
 start = end - pd.DateOffset(months=lookback)
 
+# 抓取窗口刻意比分析窗口寬：起點取到「季度下緣」、迄點一律抓到今天，
+# 這樣復盤步進（±週/±月）多半命中快取，不用重新下載。
+fetch_start = start.to_period("Q").start_time
+fetch_end = pd.Timestamp.today().normalize()
 prices, resolved, missing = cached_fetch(
-    tuple(tickers), benchmark_ticker, market, str(start.date()), str(end.date())
+    tuple(tickers), benchmark_ticker, market, str(fetch_start.date()), str(fetch_end.date())
 )
 if missing:
     st.warning(f"以下代碼無資料，已略過：{', '.join(missing)}")
@@ -146,8 +169,17 @@ if prices.empty:
     st.error("復盤基準日之前沒有足夠資料，請調整日期或清單。" if replay else "抓不到任何資料，請確認代碼。")
     st.stop()
 
-# 復盤核心：截斷到基準日，之後資料一律不看
-prices = prices.loc[:end].dropna(how="all")
+# 復盤核心：截斷到 [窗口起點, 基準日]，基準日之後的資料一律不看
+prices = prices.loc[start:end].dropna(how="all")
+if prices.empty:
+    st.error("復盤基準日之前沒有足夠資料，請調整日期或清單。")
+    st.stop()
+# 截斷後全空的欄（基準日之前尚未上市）視同無資料
+empty_cols = [c for c in prices.columns if prices[c].dropna().empty]
+if empty_cols:
+    prices = prices.drop(columns=empty_cols)
+    resolved = {k: v for k, v in resolved.items() if v not in empty_cols}
+    st.warning(f"以下代碼在基準日之前沒有資料，已略過：{', '.join(empty_cols)}")
 
 core_col = resolved.get(core_list[0])
 stock_cols = [resolved[t] for t in tickers if t in resolved]
@@ -287,6 +319,17 @@ with tab_heat:
             file_name="pattern_signals.csv",
             mime="text/csv",
         )
+    with st.expander("📊 訊號統計：各型態在本族群的歷史應驗率"):
+        stats_df = analysis.pattern_forward_stats(lab_df, legs, rs_all, stock_cols, rel_df)
+        if stats_df.empty:
+            st.caption("已確認的歷史訊號不足，無法統計。")
+        else:
+            st.dataframe(stats_df, width="stretch", hide_index=True)
+            st.caption(
+                "應驗定義：⭐ 訊號 → 下一段贏過族群；⚠️ 訊號 → 下一段輸給族群。"
+                "只計「訊號段與下一段都已確認」的樣本（無前視）。"
+                "**樣本數 < 5 的型態僅供參考**；本表反映的是這個族群在本窗口的歷史，不保證未來。"
+            )
     with st.expander("標籤說明"):
         st.markdown(
             "- **綠（相對強）**：`領漲`（▲段贏過族群）、`逆勢抗跌`（▼段逆勢上漲）、`抗跌`（▼段跌得比族群少）\n"

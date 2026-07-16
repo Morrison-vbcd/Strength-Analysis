@@ -52,6 +52,8 @@ with st.sidebar:
     lookback = st.slider("回看月數", 12, 60, 36)
     z_window = st.slider("z-score 視窗（交易日）", 20, 120, 60)
     entry = st.slider("進場門檻（±σ）", 1.0, 3.0, 2.0, 0.25)
+    stop = st.slider("停損門檻（±σ）", 2.5, 5.0, 3.0, 0.25,
+                     help="回測用：z 衝過此值視為關係斷裂，認錯出場。")
     go_btn = st.button("🚀 開始分析", type="primary", width="stretch")
 
 # ---------------------------------------------------------------------------
@@ -142,6 +144,50 @@ fig3.update_layout(
     height=300, margin={"l": 40, "r": 20, "t": 50, "b": 30},
 )
 st.plotly_chart(fig3, width="stretch")
+
+# ---- 歷史回測 ----
+st.markdown("#### 📜 歷史回測")
+st.caption(
+    f"規則：|z| ≥ {entry:.1f}σ 進場（多便宜、空昂貴）、z 回到 0 平倉、|z| ≥ {stop:.1f}σ 停損。"
+    "β 用滾動 120 日估計、訊號**次日收盤**成交（皆為避免前視偏誤，與上方全樣本診斷數字略有出入屬正常）。"
+    "**不含手續費、滑價與借券成本**。"
+)
+try:
+    bt = pairtrade.backtest_pair(sa, sb, z_window=z_window, entry=entry, stop=stop)
+except ValueError as ex:
+    st.info(f"回看資料不足，無法回測：{ex}")
+    bt = None
+if bt is not None:
+    stats = bt["stats"]
+    if stats.get("筆數", 0) == 0:
+        st.info("此參數組合在回看期間內沒有觸發任何交易。")
+    else:
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("交易筆數", stats["筆數"])
+        m2.metric("勝率", f"{stats['勝率%']:.1f}%")
+        m3.metric("平均報酬", f"{stats['平均報酬%']:+.2f}%")
+        m4.metric("總報酬", f"{stats['總報酬%']:+.2f}%")
+        m5.metric("平均持有", f"{stats['平均持有天數']:.0f} 天")
+        m6.metric("停損次數", stats["停損次數"])
+
+        eq = bt["equity"]
+        fig4 = go.Figure()
+        fig4.add_trace(go.Scatter(x=eq.index, y=eq, name="累計損益%",
+                                  line={"color": "#ef6c00", "width": 1.8}))
+        fig4.add_hline(y=0, line_color="gray", line_width=1)
+        fig4.update_layout(
+            title="回測累計損益（%，log 近似、以進場 β 逐日評價）",
+            height=280, margin={"l": 40, "r": 20, "t": 50, "b": 30},
+        )
+        st.plotly_chart(fig4, width="stretch")
+
+        st.dataframe(bt["trades"], width="stretch", hide_index=True)
+        st.download_button(
+            "⬇️ 下載回測交易明細 CSV",
+            bt["trades"].to_csv(index=False).encode("utf-8-sig"),
+            file_name="pair_backtest_trades.csv",
+            mime="text/csv",
+        )
 
 with st.expander("📖 使用說明"):
     st.markdown(

@@ -317,7 +317,9 @@ PATTERN_CATALOG = [
     ("連續領漲", "bull", "連兩個上漲段都領漲——持續領導"),
     ("谷底翻強", "bull", "先前弱勢破底/落後，首次翻為領漲——可能輪動起點"),
     ("RS創波段新高", "bull", "相對強弱線突破前波高點"),
+    ("壓力段RS新高", "bull", "族群下跌段中 RS 創波段新高——壓力下驗證的強勢，優先級最高"),
     ("領漲熄火", "bear", "前一上漲段領漲、這段轉為落後——領導力衰退"),
+    ("領漲背離", "bear", "標籤仍領漲、但 RS 段高點一波低於一波——力度未退、結構先衰（預警）"),
     ("連續落後", "bear", "連兩個上漲段都落後族群"),
     ("攻守俱弱", "bear", "跌段同步破底、漲段又落後——最弱組合"),
     ("RS創波段新低", "bear", "相對強弱線跌破前波低點"),
@@ -356,6 +358,7 @@ def detect_patterns(
                 "代號": t,
                 "型態": name,
                 "訊號": "⭐ 強" if kind == "bull" else "⚠️ 弱",
+                "狀態": "⏳進行中" if legs[leg_idx].ongoing else "✅已確認",
                 "期間": col,
                 "日期": legs[leg_idx].end.strftime("%Y-%m-%d"),
                 "說明": PATTERN_NOTE[name],
@@ -414,13 +417,80 @@ def detect_patterns(
                 cur_v = float(cur.iloc[-1])
                 if cur_v > float(prev.max()) * 1.001:
                     emit(t, "RS創波段新高", i)
+                    # 壓力段RS新高：新高發生在族群下跌段、且該段標籤仍屬相對強
+                    if dirs[i] == "down" and tags[i] in _STRONG_DOWN:
+                        emit(t, "壓力段RS新高", i)
                 if cur_v < float(prev.min()) * 0.999:
                     emit(t, "RS創波段新低", i)
+            # 領漲背離：相鄰兩個上漲段都領漲，但本段 RS 高點低於前一上漲段高點
+            for a, b in zip(up_idx, up_idx[1:]):
+                if tags[a] != "領漲" or tags[b] != "領漲":
+                    continue
+                hi_a = rs.loc[legs[a].start: legs[a].end].max()
+                hi_b = rs.loc[legs[b].start: legs[b].end].max()
+                if pd.notna(hi_a) and pd.notna(hi_b) and float(hi_b) < float(hi_a) * 0.999:
+                    emit(t, "領漲背離", b)
 
-    sig_df = pd.DataFrame(records, columns=["代號", "型態", "訊號", "期間", "日期", "說明"])
+    sig_df = pd.DataFrame(records, columns=["代號", "型態", "訊號", "狀態", "期間", "日期", "說明"])
     if not sig_df.empty:
         sig_df = sig_df.sort_values(["日期", "代號"], ascending=[False, True]).reset_index(drop=True)
     return sig_df, marks
+
+
+# ---------------------------------------------------------------------------
+# 訊號統計：每種型態在「本族群、本窗口」的歷史應驗率
+# ---------------------------------------------------------------------------
+def pattern_forward_stats(
+    qual_df: pd.DataFrame,
+    legs: list[Leg],
+    rs_lines: pd.DataFrame,
+    stock_cols: list[str],
+    rel_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """對每個歷史訊號量「下一段」的相對表現，按型態彙總。
+
+    - 只計「訊號所在段已確認、且下一段也已收」的樣本（不含進行中段，無前視）。
+    - 應驗定義：bull 訊號 → 下一段相對族群 > 0；bear 訊號 → 下一段 < 0。
+    回傳 DataFrame[型態/多空/樣本數/應驗率%/下一段相對報酬中位%/平均%]。
+    """
+    sig, _ = detect_patterns(qual_df, legs, rs_lines, stock_cols, pattern_names())
+    if sig.empty or len(legs) < 2:
+        return pd.DataFrame()
+    col_to_idx = {leg.label(): i for i, leg in enumerate(legs)}
+    cols = list(rel_df.columns)
+    samples: dict[str, list[float]] = {}
+    for _, r in sig.iterrows():
+        i = col_to_idx.get(r["期間"])
+        if i is None or i + 1 >= len(legs):
+            continue
+        if legs[i].ongoing or legs[i + 1].ongoing:
+            continue  # 進行中段不計，避免前視
+        fwd = rel_df.loc[r["代號"], cols[i + 1]]
+        if isinstance(fwd, float) and math.isnan(fwd):
+            continue
+        samples.setdefault(r["型態"], []).append(float(fwd))
+    rows = []
+    for name in pattern_names():
+        vals = samples.get(name)
+        if not vals:
+            continue
+        kind = PATTERN_KIND[name]
+        hits = sum(1 for v in vals if (v > 0 if kind == "bull" else v < 0))
+        s = pd.Series(vals)
+        rows.append(
+            {
+                "型態": name,
+                "多空": "⭐ 強" if kind == "bull" else "⚠️ 弱",
+                "樣本數": len(vals),
+                "應驗率%": round(100.0 * hits / len(vals), 1),
+                "下一段相對報酬中位%": round(float(s.median()) * 100, 2),
+                "平均%": round(float(s.mean()) * 100, 2),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out = out.sort_values(["多空", "應驗率%"], ascending=[True, False]).reset_index(drop=True)
+    return out
 
 
 # ---------------------------------------------------------------------------

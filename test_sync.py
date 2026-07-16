@@ -119,9 +119,77 @@ def t_benchmarks():
     assert sectors.display_name("美股", "GLD").startswith("🛡️")
 
 
+def t_patterns_synthetic():
+    """合成資料驗證新型態：壓力段RS新高、領漲背離、狀態欄。"""
+    import numpy as np
+
+    dates = pd.date_range("2025-01-01", periods=7, freq="30D")
+    legs = []
+    for k in range(6):
+        legs.append(analysis.Leg(start=dates[k], end=dates[k + 1],
+                                 direction="down" if k % 2 == 0 else "up",
+                                 ongoing=(k == 5)))
+    cols = [l.label() for l in legs]
+    qual = pd.DataFrame.from_dict({
+        #          ▼            ▲        ▼            ▲        ▼        ▲
+        "PRESS": ["逆勢抗跌",  "領漲",  "逆勢抗跌",  "領漲",  "抗跌",  "領漲"],
+        "DIVG":  ["抗跌",      "領漲",  "抗跌",      "領漲",  "抗跌",  "領漲"],
+    }, orient="index", columns=cols)
+    idx = pd.date_range(dates[0], dates[-1], freq="D")
+    n = len(idx)
+    # PRESS：RS 一路創高（含下跌段） → 壓力段RS新高
+    press = pd.Series(np.linspace(1.0, 2.0, n), index=idx)
+    # DIVG：每個上漲段一個波峰、高度遞減（1.5→1.3→1.15） → 領漲背離
+    divg = pd.Series(1.0, index=idx)
+    for k, h in zip([1, 3, 5], [0.5, 0.3, 0.15]):
+        mid = legs[k].start + (legs[k].end - legs[k].start) / 2
+        mask = (idx >= legs[k].start) & (idx <= legs[k].end)
+        d = (idx[mask] - mid).days.astype(float)
+        divg.loc[mask] = 1.0 + h * np.exp(-((d / 7.0) ** 2))
+    rs = pd.DataFrame({"PRESS": press, "DIVG": divg})
+    sig, _ = analysis.detect_patterns(qual, legs, rs, ["PRESS", "DIVG"],
+                                      analysis.pattern_names())
+    got = {(r["代號"], r["型態"]) for _, r in sig.iterrows()}
+    assert ("PRESS", "壓力段RS新高") in got, f"壓力段RS新高未觸發: {got}"
+    assert ("DIVG", "領漲背離") in got, f"領漲背離未觸發: {got}"
+    assert ("DIVG", "壓力段RS新高") not in got, "RS 段高點遞減者不應觸發壓力段新高"
+    assert set(sig["狀態"]) <= {"✅已確認", "⏳進行中"}
+    assert (sig[sig["期間"] == cols[-1]]["狀態"] == "⏳進行中").all()
+    # 統計：應驗率表可產出且無進行中樣本
+    rel = pd.DataFrame(0.05, index=["PRESS", "DIVG"], columns=cols)
+    stats = analysis.pattern_forward_stats(qual, legs, rs, ["PRESS", "DIVG"], rel)
+    assert not stats.empty and (stats["樣本數"] >= 1).all()
+
+
+def t_backtest_synthetic():
+    """合成均值回歸配對：回測應產生交易、勝率合理、欄位齊全。"""
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    n = 800
+    idx = pd.bdate_range("2023-01-02", periods=n)
+    # B = 隨機漫步；A = B + 定態 AR(1) spread → 完美共整合
+    lb = np.cumsum(rng.normal(0, 0.01, n)) + np.log(100)
+    sp = np.zeros(n)
+    for i in range(1, n):
+        sp[i] = 0.97 * sp[i - 1] + rng.normal(0, 0.01)
+    la = lb + sp
+    a = pd.Series(np.exp(la), index=idx)
+    b = pd.Series(np.exp(lb), index=idx)
+    bt = pairtrade.backtest_pair(a, b, z_window=60, entry=2.0, stop=3.5)
+    st_ = bt["stats"]
+    assert st_["筆數"] >= 3, f"交易太少: {st_}"
+    assert st_["勝率%"] >= 60, f"合成完美共整合勝率應高: {st_}"
+    assert {"進場日", "方向", "進場z", "出場日", "出場原因", "持有天數", "報酬%"} <= set(bt["trades"].columns)
+    assert len(bt["equity"]) == n
+    print(f"       trades={st_['筆數']} win={st_['勝率%']}% total={st_['總報酬%']}%")
+
+
 check("data.fetch_prices（美股+基準）", t_data)
 check("data.fetch_prices（台股 .TW/.TWO 退補）", t_data_tw)
 check("analysis.analyze + detect_patterns", t_analyze)
+check("analysis：新型態（壓力段RS新高/領漲背離/狀態欄/統計）", t_patterns_synthetic)
+check("pairtrade.backtest_pair（合成共整合）", t_backtest_synthetic)
 check("rotation：RRG full/tail/summary/regime/signals", t_rotation)
 check("pairtrade：V↔MA 共整合檢定", t_pair)
 check("benchmarks/sectors helpers", t_benchmarks)

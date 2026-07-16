@@ -372,6 +372,17 @@ with tab_rrg:
     regime = rotation.risk_regime(full, market)
     st.markdown(f"##### {regime}")
 
+    # 最新一期未收盤提醒（週線：時間戳是本週五；日線：今天盤中）
+    _today = pd.Timestamp.today().normalize()
+    _last = max(df.index[-1] for df in full.values())
+    if freq == "週線" and _today < _last:
+        st.info(
+            f"⏳ 最新一期（{_last.strftime('%Y-%m-%d')} 當週）**尚未收盤**，"
+            "各板塊最後一點的位置與象限轉換訊號都屬暫定，週五收盤後才算確認。"
+        )
+    elif freq == "日線" and _last >= _today:
+        st.info("⏳ 最新一點為今日資料（延遲約 15 分鐘），收盤前屬暫定。")
+
     # 2. 現況象限一覽卡
     summary = rotation.rrg_summary(full, market, sectors.display_name)
     render_quadrant_cards(summary)
