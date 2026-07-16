@@ -11,6 +11,7 @@
 支援台股（代碼自動補 .TW，上櫃自動退 .TWO）與美股。資料來源 Yahoo Finance（免費，延遲約 15 分鐘）。
 
 **訊號怎麼讀、什麼時候能信**：見 [使用手冊.md](使用手冊.md)。
+**讀完之後怎麼做（波段輪動策略）**：見 [策略守則.md](策略守則.md)——由 2019–2026 實價復盤制定，依據可用 `strategy_study.py` 重跑驗證。
 
 ## 安裝與啟動（Windows）
 
@@ -45,6 +46,7 @@ benchmarks.py        # 預設觀察清單（同質性分級）與板塊基準
 sectors.py           # RRG 板塊 ETF 宇宙（含防禦板塊 🛡️）
 data.py              # yfinance 抓價 + .TW/.TWO 退補
 param_sweep.py       # （工具）ZigZag 參數掃描
+strategy_study.py    # （工具）輪動策略實價復盤研究（策略守則的數據依據）
 ```
 
 ## FAQ
