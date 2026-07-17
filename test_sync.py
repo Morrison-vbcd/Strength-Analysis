@@ -185,11 +185,33 @@ def t_backtest_synthetic():
     print(f"       trades={st_['筆數']} win={st_['勝率%']}% total={st_['總報酬%']}%")
 
 
+def t_peers():
+    import peers
+
+    problems = peers.integrity_check()
+    assert not problems, problems[:5]
+    rec = peers.recommend("NVDA")
+    assert rec["sector_key"] == "ai_gpu"
+    assert [d["ticker"] for d in rec["peers"]] == ["AMD"]
+    assert any(d["ticker"] == "AVGO" for d in rec["related"]), "綜合型剔除註記缺失"
+    rec2 = peers.recommend("mrvl")  # 小寫 + 多板塊
+    assert rec2["sector_key"] == "ai_asic_networking" and len(rec2["sectors_all"]) == 2
+    rec3 = peers.recommend("MRVL", "ai_connectivity_silicon")  # 板塊切換
+    assert {d["ticker"] for d in rec3["peers"]} == {"ALAB", "CRDO"}
+    assert peers.recommend("IONQ")["rating"] == "C"
+    assert peers.recommend("V")["rating"] == "A"
+    assert peers.recommend("ZZZZ") is None
+    db_n = len(peers.lookup_sectors("TSLA"))
+    assert db_n == 1  # TSLA 特例：主籃 ai_app_software
+    print(f"       sectors=46 tickers={sum(1 for _ in __import__('json').load(open('peers_us.json', encoding='utf-8'))['ticker_index'])}")
+
+
 check("data.fetch_prices（美股+基準）", t_data)
 check("data.fetch_prices（台股 .TW/.TWO 退補）", t_data_tw)
 check("analysis.analyze + detect_patterns", t_analyze)
 check("analysis：新型態（壓力段RS新高/領漲背離/狀態欄/統計）", t_patterns_synthetic)
 check("pairtrade.backtest_pair（合成共整合）", t_backtest_synthetic)
+check("peers：同質性推薦（完整性/反查/多板塊/評級）", t_peers)
 check("rotation：RRG full/tail/summary/regime/signals", t_rotation)
 check("pairtrade：V↔MA 共整合檢定", t_pair)
 check("benchmarks/sectors helpers", t_benchmarks)
@@ -206,6 +228,13 @@ def t_home():
     at.session_state["ref_raw"] = "AMD AVGO"
     at.run()
     assert not at.exception, at.exception[0].value if at.exception else ""
+    # 點「推薦同質參考股」→ ref_raw 應被 ai_gpu 板塊 peers 覆寫為 AMD
+    btns = [b for b in at.button if "推薦同質參考股" in (b.label or "")]
+    assert btns, "找不到推薦按鈕"
+    btns[0].click()
+    at.run()
+    assert not at.exception, at.exception[0].value if at.exception else ""
+    assert at.session_state["ref_raw"] == "AMD", at.session_state["ref_raw"]
 
 
 def t_rot_page():

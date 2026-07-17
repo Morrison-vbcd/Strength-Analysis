@@ -16,6 +16,7 @@ import streamlit as st
 import analysis
 import benchmarks
 import data
+import peers
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,34 @@ def _apply_preset():
 
 def _on_market_change():
     st.session_state["preset_pick"] = "（自訂 / 清空）"
+
+
+def _recommend_peers():
+    """依核心標的反查同質性研究清單，推薦 peers 填入參考股欄。"""
+    raw = (st.session_state.get("core_raw") or "").upper()
+    toks = [t for t in re.split(r"[\s,]+", raw) if t.strip()]
+    core = toks[0] if toks else ""
+    if not core:
+        st.session_state["peer_rec"] = {"miss": True, "ticker": ""}
+        return
+    rec = peers.recommend(core)
+    if rec is None:
+        st.session_state["peer_rec"] = {"miss": True, "ticker": core}
+        return
+    st.session_state["peer_rec"] = rec
+    st.session_state["peer_sector_pick"] = rec["sector_key"]
+    st.session_state["ref_raw"] = " ".join(d["ticker"] for d in rec["peers"])
+
+
+def _apply_peer_sector():
+    """多板塊標的（MRVL/HOOD/UUUU…）切換板塊後重新帶入 peers。"""
+    rec = st.session_state.get("peer_rec") or {}
+    if rec.get("miss"):
+        return
+    new = peers.recommend(rec["ticker"], st.session_state.get("peer_sector_pick"))
+    if new:
+        st.session_state["peer_rec"] = new
+        st.session_state["ref_raw"] = " ".join(d["ticker"] for d in new["peers"])
 
 
 def _shift_asof(days: int):
@@ -80,6 +109,54 @@ with st.sidebar:
     core_raw = st.text_input(
         "核心標的（分析主角，1 檔）", key="core_raw", placeholder="台股例：2330／美股例：NVDA"
     )
+    if market == "美股":
+        st.button(
+            "🧲 依核心標的推薦同質參考股",
+            on_click=_recommend_peers,
+            width="stretch",
+            help=f"依同質性研究（{peers.as_of()}，46 板塊/340+ 檔）反查核心標的所屬板塊，"
+                 "自動帶入同質 peers（綜合型已剔除）。",
+        )
+        _rec = st.session_state.get("peer_rec")
+        _cur = [t for t in re.split(r"[\s,]+", (st.session_state.get("core_raw") or "").upper()) if t]
+        _cur = _cur[0] if _cur else ""
+        if _rec and _rec.get("ticker", "") == _cur:
+            if _rec.get("miss"):
+                st.caption(
+                    "請先輸入核心標的再按推薦。" if not _cur
+                    else f"「{_cur}」不在同質性研究清單（46 板塊/340+ 檔）內，暫無推薦；請手動輸入參考股。"
+                )
+            else:
+                if len(_rec["sectors_all"]) > 1:
+                    st.selectbox(
+                        "此標的橫跨多板塊，切換：",
+                        _rec["sectors_all"],
+                        key="peer_sector_pick",
+                        format_func=peers.sector_name,
+                        on_change=_apply_peer_sector,
+                    )
+                st.caption(f"**{_rec['name_zh']}**（同質性 **{_rec['rating']}** 級）｜{_rec['driver']}")
+                if _rec["rating"] == "C":
+                    st.warning(
+                        "C 級：僅主題連動、成分基本面異質——只適合動能監控，"
+                        "**不建議配對**，RS 標籤解讀需保守。"
+                    )
+                if _rec["related"]:
+                    st.caption("綜合型已剔除：" + "、".join(
+                        f"{d['ticker']}（{d['reason']}）" for d in _rec["related"]))
+                with st.expander("推薦明細與注意事項"):
+                    st.dataframe(
+                        pd.DataFrame(_rec["peers"]).rename(columns={
+                            "ticker": "代碼", "company": "公司", "cap_tier": "市值層",
+                            "purity": "純度", "notes": "備註"}),
+                        width="stretch", hide_index=True,
+                    )
+                    if _rec["pair_candidates"]:
+                        st.caption("配對候選（需自行到配對交易頁跑協整檢定）：" +
+                                   "；".join("↔".join(p) for p in _rec["pair_candidates"]))
+                    if _rec["notes"]:
+                        st.caption(f"板塊備註：{_rec['notes']}")
+                    st.caption("市值層為 2026-07 概估；成分與評級建議每季重新盤點。")
     ref_raw = st.text_area(
         "參考股（同質群體，空白 / 逗號 / 換行分隔）",
         height=110,
