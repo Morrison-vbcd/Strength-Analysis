@@ -24,7 +24,12 @@ import peers
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=900, show_spinner="下載價格資料中…")
 def cached_fetch(tickers: tuple[str, ...], bench: str | None, market: str, start: str, end: str):
-    return data.fetch_prices(list(tickers), bench, market, start, end)
+    px, resolved, missing = data.fetch_prices(list(tickers), bench, market, start, end)
+    # 全軍覆沒幾乎必是 Yahoo 限流/斷線（清單全打錯的機率極低）。
+    # 拋例外 → 失敗不進快取，重跑即可重試。
+    if px.empty and missing:
+        raise data.FetchQualityError("、".join(missing))
+    return px, resolved, missing
 
 
 def parse_tickers(raw: str) -> list[str]:
@@ -237,9 +242,17 @@ start = end - pd.DateOffset(months=lookback)
 # 這樣復盤步進（±週/±月）多半命中快取，不用重新下載。
 fetch_start = start.to_period("Q").start_time
 fetch_end = pd.Timestamp.today().normalize()
-prices, resolved, missing = cached_fetch(
-    tuple(tickers), benchmark_ticker, market, str(fetch_start.date()), str(fetch_end.date())
-)
+try:
+    prices, resolved, missing = cached_fetch(
+        tuple(tickers), benchmark_ticker, market, str(fetch_start.date()), str(fetch_end.date())
+    )
+except data.FetchQualityError as ex:
+    st.error(
+        "📡 Yahoo Finance 疑似限流（整批清單都抓不到）。"
+        "這次的失敗結果**不會**進快取——請等 1〜2 分鐘後重跑即可。"
+        f"\n\n本次缺漏：{ex}（若代碼確定正確，就是限流；否則請檢查代碼）"
+    )
+    st.stop()
 if missing:
     st.warning(f"以下代碼無資料，已略過：{', '.join(missing)}")
 if prices.empty:

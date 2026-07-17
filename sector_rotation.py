@@ -37,7 +37,12 @@ _QUAD_STYLE = {
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=900, show_spinner="下載板塊 ETF 資料中…")
 def cached_fetch(tickers: tuple[str, ...], bench: str, market: str, start: str, end: str):
-    return data.fetch_prices(list(tickers), bench, market, start, end)
+    px, resolved, missing = data.fetch_prices(list(tickers), bench, market, start, end)
+    # 板塊宇宙是固定 ETF 清單，缺一半以上 = Yahoo 限流。
+    # 拋例外 → 這次失敗「不會」被快取，使用者重按即可重試。
+    if len(missing) * 2 >= len(tickers) + 1:
+        raise data.FetchQualityError("、".join(missing))
+    return px, resolved, missing
 
 
 def build_color_map(cols: list[str]) -> dict[str, str]:
@@ -346,9 +351,17 @@ if len(sel_sectors) < 2:
 bench = sectors.rotation_benchmark(market)
 end = pd.Timestamp.today().normalize()
 start = end - pd.DateOffset(months=lookback)
-prices, resolved, missing = cached_fetch(
-    tuple(sel_sectors), bench, market, str(start.date()), str(end.date())
-)
+try:
+    prices, resolved, missing = cached_fetch(
+        tuple(sel_sectors), bench, market, str(start.date()), str(end.date())
+    )
+except data.FetchQualityError as ex:
+    st.error(
+        "📡 Yahoo Finance 疑似限流（多數板塊抓不到資料）。"
+        "這次的失敗結果**不會**進快取——請等 1〜2 分鐘後再按一次「🚀 開始分析」即可。"
+        f"\n\n本次缺漏：{ex}"
+    )
+    st.stop()
 if missing:
     st.warning(f"以下代碼無資料，已略過：{', '.join(missing)}")
 bench_col = resolved.get(data.SECTOR_KEY)

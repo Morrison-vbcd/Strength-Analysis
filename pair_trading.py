@@ -17,7 +17,11 @@ import pairtrade
 
 @st.cache_data(ttl=900, show_spinner="下載價格資料中…")
 def cached_fetch(tickers: tuple[str, ...], market: str, start: str, end: str):
-    return data.fetch_prices(list(tickers), None, market, start, end)
+    px, resolved, missing = data.fetch_prices(list(tickers), None, market, start, end)
+    # 配對只有兩腿，缺任何一腿都無法算——拋例外讓失敗不進快取，重跑即重試。
+    if missing:
+        raise data.FetchQualityError("、".join(missing))
+    return px, resolved, missing
 
 
 def _apply_pair_preset():
@@ -79,11 +83,15 @@ if not a_raw or not b_raw or a_raw == b_raw:
 
 end = pd.Timestamp.today().normalize()
 start = end - pd.DateOffset(months=lookback)
-prices, resolved, missing = cached_fetch(
-    (a_raw, b_raw), market, str(start.date()), str(end.date())
-)
-if missing:
-    st.error(f"抓不到資料：{', '.join(missing)}")
+try:
+    prices, resolved, missing = cached_fetch(
+        (a_raw, b_raw), market, str(start.date()), str(end.date())
+    )
+except data.FetchQualityError as ex:
+    st.error(
+        f"抓不到資料：{ex}。若代碼正確，多半是 Yahoo 限流——"
+        "失敗結果不會進快取，請等 1〜2 分鐘再按「🚀 開始分析」重試。"
+    )
     st.stop()
 col_a, col_b = resolved[a_raw], resolved[b_raw]
 sa, sb = prices[col_a].dropna(), prices[col_b].dropna()
