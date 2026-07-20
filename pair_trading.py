@@ -13,6 +13,7 @@ import streamlit as st
 
 import data
 import pairtrade
+import ui
 
 
 @st.cache_data(ttl=900, show_spinner="下載價格資料中…")
@@ -39,6 +40,7 @@ for key in ("pair_a", "pair_b"):
 # ---------------------------------------------------------------------------
 # 側邊欄
 # ---------------------------------------------------------------------------
+ui.inject()
 with st.sidebar:
     st.header("配對交易設定")
     market = st.selectbox("市場", ["美股", "台股"], index=0, key="pair_market")
@@ -120,38 +122,38 @@ c5.metric("現況 z-score", f"{res['cur_z']:+.2f}")
 ratio = pairtrade.rebased_ratio(sa, sb)
 fig1 = go.Figure()
 fig1.add_trace(go.Scatter(x=ratio.index, y=ratio, name=f"{col_a}/{col_b}",
-                          line={"color": "#2e7d32", "width": 1.8}))
-fig1.add_hline(y=100, line_dash="dot", line_color="gray")
+                          line={"color": ui.LINE_RATIO, "width": 1.8}))
+fig1.add_hline(y=100, line_dash="dot", line_color=ui.COLORS["baseline"])
 fig1.update_layout(
     title=f"{col_a} ÷ {col_b} 比值（起點 = 100，向上 = A 相對走強）",
     height=320, margin={"l": 40, "r": 20, "t": 50, "b": 30},
 )
-st.plotly_chart(fig1, width="stretch")
+st.plotly_chart(ui.apply(fig1), width="stretch")
 
 # ---- 圖 2：z-score 帶圖 ----
 z = res["z"].dropna()
 fig2 = go.Figure()
-fig2.add_trace(go.Scatter(x=z.index, y=z, name="z-score", line={"color": "#1565c0", "width": 1.6}))
-for lv, color in [(entry, "#c62828"), (-entry, "#2e7d32")]:
+fig2.add_trace(go.Scatter(x=z.index, y=z, name="z-score", line={"color": ui.LINE_Z, "width": 1.6}))
+for lv, color in [(entry, ui.COLORS["red"]), (-entry, ui.COLORS["accent"])]:
     fig2.add_hline(y=lv, line_dash="dash", line_color=color)
-fig2.add_hline(y=0, line_color="gray", line_width=1)
+fig2.add_hline(y=0, line_color=ui.COLORS["baseline"], line_width=1)
 fig2.update_layout(
     title=f"spread z-score（視窗 {z_window} 日；±{entry:.1f}σ = 進場門檻）",
     height=320, margin={"l": 40, "r": 20, "t": 50, "b": 30},
 )
-st.plotly_chart(fig2, width="stretch")
+st.plotly_chart(ui.apply(fig2), width="stretch")
 
 # ---- 圖 3：log-spread ----
 sp = res["spread"]
 fig3 = go.Figure()
 fig3.add_trace(go.Scatter(x=sp.index, y=sp, name="log-spread",
-                          line={"color": "#6a1b9a", "width": 1.4}))
-fig3.add_hline(y=float(sp.mean()), line_dash="dot", line_color="gray")
+                          line={"color": ui.LINE_SPREAD, "width": 1.4}))
+fig3.add_hline(y=float(sp.mean()), line_dash="dot", line_color=ui.COLORS["baseline"])
 fig3.update_layout(
     title=f"log-spread = ln({col_a}) − β·ln({col_b}) − α",
     height=300, margin={"l": 40, "r": 20, "t": 50, "b": 30},
 )
-st.plotly_chart(fig3, width="stretch")
+st.plotly_chart(ui.apply(fig3), width="stretch")
 
 # ---- 歷史回測 ----
 st.markdown("#### 📜 歷史回測")
@@ -181,13 +183,13 @@ if bt is not None:
         eq = bt["equity"]
         fig4 = go.Figure()
         fig4.add_trace(go.Scatter(x=eq.index, y=eq, name="累計損益%",
-                                  line={"color": "#ef6c00", "width": 1.8}))
-        fig4.add_hline(y=0, line_color="gray", line_width=1)
+                                  line={"color": ui.LINE_EQUITY, "width": 1.8}))
+        fig4.add_hline(y=0, line_color=ui.COLORS["baseline"], line_width=1)
         fig4.update_layout(
             title="回測累計損益（%，log 近似、以進場 β 逐日評價）",
             height=280, margin={"l": 40, "r": 20, "t": 50, "b": 30},
         )
-        st.plotly_chart(fig4, width="stretch")
+        st.plotly_chart(ui.apply(fig4), width="stretch")
 
         st.dataframe(bt["trades"], width="stretch", hide_index=True)
         st.download_button(

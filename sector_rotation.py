@@ -15,20 +15,16 @@ import analysis
 import data
 import rotation
 import sectors
+import ui
 
-# Dark24 高對比調色盤（plotly.express.colors.qualitative.Dark24）
-_PALETTE = [
-    "#2E91E5", "#E15F99", "#1CA71C", "#FB0D0D", "#DA16FF", "#222A2A",
-    "#B68100", "#750D86", "#EB663B", "#511CFB", "#00A08B", "#FB00D1",
-    "#FC0080", "#B2828D", "#6C7C32", "#778AAE", "#862A16", "#A777F1",
-    "#620042", "#1616A7", "#DA60CA", "#6C4516", "#0D2A63", "#AF0038",
-]
+# 高對比亮色盤（深色底用；identity 由每點的直接標籤承載）
+_PALETTE = ui.PALETTE24
 
 _QUAD_STYLE = {
-    "領先": ("🟩", "rgba(46,125,50,0.08)"),
-    "改善": ("🟦", "rgba(25,118,210,0.08)"),
-    "轉弱": ("🟨", "rgba(249,168,37,0.10)"),
-    "落後": ("🟥", "rgba(198,40,40,0.08)"),
+    "領先": ("🟩", "rgba(46,204,113,0.08)"),
+    "改善": ("🟦", "rgba(77,163,255,0.08)"),
+    "轉弱": ("🟨", "rgba(255,183,77,0.09)"),
+    "落後": ("🟥", "rgba(229,83,75,0.08)"),
 }
 
 
@@ -53,23 +49,23 @@ def build_color_map(cols: list[str]) -> dict[str, str]:
 # 圖表元件
 # ---------------------------------------------------------------------------
 def _add_quadrant_backdrop(fig: go.Figure, xr: tuple[float, float], yr: tuple[float, float]) -> None:
-    """四象限底色 + 中心十字線 + 角落標籤（半透明白底）。"""
+    """四象限底色 + 中心十字線 + 角落標籤（深色半透明底）。"""
     quads = [
-        (100, xr[1], 100, yr[1], "rgba(46,125,50,0.06)", "領先 Leading", xr[1], yr[1], "right", "top"),
-        (100, xr[1], yr[0], 100, "rgba(249,168,37,0.07)", "轉弱 Weakening", xr[1], yr[0], "right", "bottom"),
-        (xr[0], 100, yr[0], 100, "rgba(198,40,40,0.06)", "落後 Lagging", xr[0], yr[0], "left", "bottom"),
-        (xr[0], 100, 100, yr[1], "rgba(25,118,210,0.06)", "改善 Improving", xr[0], yr[1], "left", "top"),
+        (100, xr[1], 100, yr[1], "rgba(46,204,113,0.06)", "領先 Leading", xr[1], yr[1], "right", "top"),
+        (100, xr[1], yr[0], 100, "rgba(255,183,77,0.06)", "轉弱 Weakening", xr[1], yr[0], "right", "bottom"),
+        (xr[0], 100, yr[0], 100, "rgba(229,83,75,0.06)", "落後 Lagging", xr[0], yr[0], "left", "bottom"),
+        (xr[0], 100, 100, yr[1], "rgba(77,163,255,0.06)", "改善 Improving", xr[0], yr[1], "left", "top"),
     ]
     for x0, x1, y0, y1, color, label, ax, ay, xanchor, yanchor in quads:
         fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1, fillcolor=color, line_width=0, layer="below")
         fig.add_annotation(
             x=ax, y=ay, text=label, showarrow=False,
             xanchor=xanchor, yanchor=yanchor,
-            font={"size": 12, "color": "#555"},
-            bgcolor="rgba(255,255,255,0.65)",
+            font={"size": 12, "color": ui.COLORS["text_dim"]},
+            bgcolor="rgba(13,17,23,0.70)",
         )
-    fig.add_hline(y=100, line_color="#999", line_width=1)
-    fig.add_vline(x=100, line_color="#999", line_width=1)
+    fig.add_hline(y=100, line_color=ui.COLORS["baseline"], line_width=1)
+    fig.add_vline(x=100, line_color=ui.COLORS["baseline"], line_width=1)
 
 
 def _axis_range(rrg: dict[str, pd.DataFrame]) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -133,7 +129,7 @@ def rrg_figure(
         showlegend=False,
         margin={"l": 50, "r": 30, "t": 30, "b": 50},
     )
-    return fig
+    return ui.apply(fig)
 
 
 def rrg_animated_figure(
@@ -231,7 +227,7 @@ def rrg_animated_figure(
             }
         ],
     )
-    return fig
+    return ui.apply(fig)
 
 
 def render_quadrant_cards(summary: pd.DataFrame) -> None:
@@ -272,8 +268,10 @@ def heatmap_fig(rel_df: pd.DataFrame, lab_df: pd.DataFrame, title: str) -> go.Fi
     fig = go.Figure(
         go.Heatmap(
             z=rel.values, x=list(rel.columns), y=list(rel.index),
-            zmid=0, zmin=-zmax, zmax=zmax, colorscale="RdYlGn",
-            text=text, texttemplate="%{text}", textfont={"size": 10},
+            zmid=0, zmin=-zmax, zmax=zmax, colorscale=ui.HEAT_DIVERGING,
+            xgap=2, ygap=2,
+            text=text, texttemplate="%{text}",
+            textfont={"size": 10, "color": ui.HEAT_TEXT},
             hovertemplate="%{y} | %{x}<br>相對強弱 %{z:+.2f}%<extra></extra>",
             colorbar={"title": "相對強弱%"},
         )
@@ -284,12 +282,13 @@ def heatmap_fig(rel_df: pd.DataFrame, lab_df: pd.DataFrame, title: str) -> go.Fi
         xaxis={"side": "bottom"},
         margin={"l": 80, "r": 20, "t": 50, "b": 60},
     )
-    return fig
+    return ui.apply(fig)
 
 
 # ---------------------------------------------------------------------------
 # 側邊欄
 # ---------------------------------------------------------------------------
+ui.inject()
 with st.sidebar:
     st.header("板塊輪動設定")
     market = st.selectbox("市場", ["美股", "台股"], index=0, key="rot_market")

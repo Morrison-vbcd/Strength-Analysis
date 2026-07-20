@@ -1,0 +1,49 @@
+<!-- @dsCard group="Charts" -->
+<title>圖表骨架 — 格線 / 軸線 / 序列色 / RRG 象限</title>
+<style>
+  .kit { font-family: system-ui, "Segoe UI", sans-serif; background:#0d1117; color:#e6edf3;
+         padding:24px; border-radius:10px; }
+  .kit h2 { font-size:14px; letter-spacing:.08em; color:#8b949e; margin:0 0 10px; }
+  .kit p  { font-size:12px; color:#8b949e; margin:10px 0 18px; }
+</style>
+<div class="kit">
+  <h2>折線圖骨架（透明底、格線 #21262e、軸線 #3d4550、▼段 10% 紅底）</h2>
+  <svg viewBox="0 0 560 180" width="560" height="180" role="img" aria-label="RS 線樣例">
+    <rect x="150" y="10" width="90" height="150" fill="rgba(229,83,75,0.10)"/>
+    <rect x="380" y="10" width="70" height="150" fill="rgba(229,83,75,0.10)"/>
+    <g stroke="#21262e" stroke-width="1">
+      <line x1="40" y1="40" x2="550" y2="40"/><line x1="40" y1="80" x2="550" y2="80"/>
+      <line x1="40" y1="120" x2="550" y2="120"/>
+    </g>
+    <line x1="40" y1="160" x2="550" y2="160" stroke="#3d4550" stroke-width="1"/>
+    <line x1="40" y1="100" x2="550" y2="100" stroke="#3d4550" stroke-dasharray="3 3"/>
+    <polyline fill="none" stroke="#3987e5" stroke-width="3"
+      points="40,120 100,110 150,95 200,105 240,80 300,70 340,85 380,60 450,72 550,35"/>
+    <polyline fill="none" stroke="#d55181" stroke-width="1.6"
+      points="40,90 100,100 150,105 200,118 240,112 300,120 340,128 380,118 450,132 550,140"/>
+    <polyline fill="none" stroke="#c98500" stroke-width="1.6"
+      points="40,105 100,95 150,112 200,98 240,104 300,96 340,108 380,100 450,95 550,88"/>
+    <text x="552" y="38" font-size="11" fill="#3987e5">核心(粗)</text>
+  </svg>
+  <p>核心標的 3px 加粗（雙重編碼,不靠顏色）;基準線 1.0 用 #3d4550 點線;hover 卡底 #1c2330。</p>
+  <h2>RRG 象限（底色 6% 透明、標籤 #8b949e、十字 #3d4550、防禦 = ◆）</h2>
+  <svg viewBox="0 0 560 220" width="560" height="220" role="img" aria-label="RRG 樣例">
+    <rect x="280" y="10"  width="270" height="100" fill="rgba(46,204,113,0.06)"/>
+    <rect x="280" y="110" width="270" height="100" fill="rgba(255,183,77,0.06)"/>
+    <rect x="10"  y="110" width="270" height="100" fill="rgba(229,83,75,0.06)"/>
+    <rect x="10"  y="10"  width="270" height="100" fill="rgba(77,163,255,0.06)"/>
+    <line x1="10" y1="110" x2="550" y2="110" stroke="#3d4550"/>
+    <line x1="280" y1="10" x2="280" y2="210" stroke="#3d4550"/>
+    <text x="545" y="24" font-size="11" fill="#8b949e" text-anchor="end">領先 Leading</text>
+    <text x="545" y="202" font-size="11" fill="#8b949e" text-anchor="end">轉弱 Weakening</text>
+    <text x="16" y="202" font-size="11" fill="#8b949e">落後 Lagging</text>
+    <text x="16" y="24" font-size="11" fill="#8b949e">改善 Improving</text>
+    <circle cx="380" cy="60" r="7" fill="#00B5F7" stroke="#fff" stroke-width="1"/>
+    <text x="390" y="74" font-size="10" fill="#00B5F7">金融 XLF</text>
+    <rect x="205" y="55" width="11" height="11" transform="rotate(45 210 60)" fill="#F6F926" stroke="#fff" stroke-width="1"/>
+    <text x="220" y="74" font-size="10" fill="#F6F926">🛡️公用事業</text>
+    <circle cx="180" cy="160" r="7" fill="#FD3216" stroke="#fff" stroke-width="1"/>
+    <text x="190" y="174" font-size="10" fill="#FD3216">半導體 SMH</text>
+  </svg>
+  <p>identity 由每點的直接標籤承載（15 序列超出安全上限,顏色僅輔助）;板塊亮色盤 = Light24。</p>
+</div>

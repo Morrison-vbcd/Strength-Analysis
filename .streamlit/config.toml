@@ -1,6 +1,13 @@
 [theme]
-base = "light"
-primaryColor = "#2e7d32"
+# 深色交易終端主題——色值與 ui.py 的 COLORS 同步,改一邊要改另一邊
+base = "dark"
+primaryColor = "#22c37e"
+backgroundColor = "#0d1117"
+secondaryBackgroundColor = "#161b22"
+textColor = "#e6edf3"
+font = "sans serif"
+baseRadius = "6px"
+borderColor = "#262d37"
 
 [browser]
 gatherUsageStats = false

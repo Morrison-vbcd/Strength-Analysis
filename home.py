@@ -17,6 +17,7 @@ import analysis
 import benchmarks
 import data
 import peers
+import ui
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,7 @@ for key in ("core_raw", "ref_raw"):
 # ---------------------------------------------------------------------------
 # 側邊欄
 # ---------------------------------------------------------------------------
+ui.inject()
 with st.sidebar:
     st.header("設定")
     market = st.selectbox("市場", ["台股", "美股"], index=0, key="market", on_change=_on_market_change)
@@ -361,10 +363,12 @@ def heatmap_fig(
             zmid=0,
             zmin=-zmax,
             zmax=zmax,
-            colorscale="RdYlGn",
+            colorscale=ui.HEAT_DIVERGING,
+            xgap=2,
+            ygap=2,
             text=text,
             texttemplate="%{text}",
-            textfont={"size": 10},
+            textfont={"size": 10, "color": ui.HEAT_TEXT},
             hovertemplate="%{y} | %{x}<br>相對強弱 %{z:+.2f}%<extra></extra>",
             colorbar={"title": "相對強弱%"},
         )
@@ -375,7 +379,7 @@ def heatmap_fig(
         xaxis={"side": "bottom"},
         margin={"l": 80, "r": 20, "t": 50, "b": 60},
     )
-    return fig
+    return ui.apply(fig)
 
 
 tab_heat, tab_rank, tab_rs, tab_help = st.tabs(
@@ -457,19 +461,19 @@ with tab_rs:
     for leg in legs:  # ▼段淡紅底，結構一目了然
         if leg.direction == "down":
             fig.add_vrect(
-                x0=leg.start, x1=leg.end, fillcolor="rgba(220,60,60,0.07)", line_width=0
+                x0=leg.start, x1=leg.end, fillcolor=ui.DOWNLEG_FILL, line_width=0
             )
     for t in picked:
         width = 3.0 if t == core_col else 1.4
         fig.add_trace(go.Scatter(x=rs.index, y=rs[t], name=t, mode="lines", line={"width": width}))
-    fig.add_hline(y=1.0, line_dash="dot", line_color="gray")
+    fig.add_hline(y=1.0, line_dash="dot", line_color=ui.COLORS["baseline"])
     fig.update_layout(
         title="RS = 個股 / 族群籃子（窗口起點 = 1.0；淡紅底 = 籃子▼下跌段；核心標的加粗）",
         height=520,
         legend={"orientation": "h", "y": -0.15},
         margin={"l": 40, "r": 20, "t": 50, "b": 40},
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(ui.apply(fig), width="stretch")
 
 with tab_help:
     st.markdown(
